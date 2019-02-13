@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xmlns:task="http://www.springframework.org/schema/task" 
+       xmlns:sfpay-mvc="http://www.sf-pay.com/schema/sfpay-mvc"
+       xsi:schemaLocation="
+       http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd  
+       http://www.springframework.org/schema/context  http://www.springframework.org/schema/context/spring-context.xsd  
+       http://www.springframework.org/schema/aop  http://www.springframework.org/schema/aop/spring-aop.xsd
+       http://www.springframework.org/schema/tx  http://www.springframework.org/schema/tx/spring-tx.xsd
+       http://www.springframework.org/schema/mvc  http://www.springframework.org/schema/mvc/spring-mvc.xsd
+       http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
+       http://www.sf-pay.com/schema/sfpay-mvc http://www.sf-pay.com/schema/framework2-mvc.xsd">
+<!--     <aop:aspectj-autoproxy proxy-target-class="true"/>
+ -->    <!-- <bean id="test-appContextHolder" class="AppContextHolder"></bean> -->
+	<bean id="test-aspectConf" name="aspectConf" class="org.sirenia.test.start.AspectConf">
+		<property name="appName" value="${project.name}"></property>
+		<property name="dir" value="d:/sirenia-test"></property>
+	</bean>
+	<!-- <bean id="test-hessianMethodInterceptor" class="HessianMethodInterceptor">
+		<property name="aspectConf" ref="test-aspectConf"></property>
+	</bean>-->
+	<bean id="test-methodSetLoader" class="org.sirenia.test.start.MethodSetLoader" init-method="init">
+		<property name="aspectConf" ref="test-aspectConf"></property>
+	</bean> 
+	<bean id="test-jsAspect" class="org.sirenia.test.start.JsAspect">
+			<property name="aspectConf" ref="test-aspectConf"></property>
+	</bean>
+</beans>
