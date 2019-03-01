@@ -1,5 +1,6 @@
 package org.sirenia.test.start;
 
+import java.lang.reflect.Method;
 import java.util.Set;
 
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -66,7 +67,9 @@ public class JsAspect {
 				if(ret == null){
 					return null;
 				}
-				return MethodUtil.parseJSONForReturnType(ms.getMethod(), ret.toString());
+				Method method = MethodUtil.getMethodByName(clazzname, funcName);
+				//tip:不要用ms.getMethod()，返回的方法签名会不一样，解析json的结果不一样
+				return MethodUtil.parseJSONForReturnType(method , ret.toString());
 			}
 		}catch(Exception e){
 			logger.error("JsAspect执行js异常");
