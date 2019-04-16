@@ -10,7 +10,7 @@ import java.nio.file.WatchService;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.sirenia.test.util.callback.Callback10;
+import org.sirenia.test.util.Callback.Callback10;
 
 public class FileWatcher {
 	private String dir;

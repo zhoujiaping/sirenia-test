@@ -10,15 +10,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.util.ResourceUtils;
-
 public class HessianMethodInterceptor implements MethodInterceptor, Ordered {
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
-	private AspectConf aspectConf;
+	private JsAspectConf jsAspectConf;
 	public int getOrder() {
 		return 0;
 	}
-	public void setAspectConf(AspectConf aspectConf) {
-		this.aspectConf = aspectConf;
+	public void setAspectConf(JsAspectConf jsAspectConf) {
+		this.jsAspectConf = jsAspectConf;
 	}
 	@Override
 	public Object invoke(MethodInvocation invocation) throws Throwable {
@@ -31,9 +30,9 @@ public class HessianMethodInterceptor implements MethodInterceptor, Ordered {
 			clazzname = clazzname.substring(0, endIndex - 1 );
 		}
 		try{
-			String key = aspectConf.getAppName()+"."+clazzname;
-			if(aspectConf.methodSet.contains(key+"."+funcName)){
-				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(aspectConf.getJsDir()+"/"+key.replaceAll("\\.", "/")+".js"));
+			String key = jsAspectConf.getAppName()+"."+clazzname;
+			if(jsAspectConf.methodSet.contains(key+"."+funcName)){
+				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(jsAspectConf.getJsDir()+"/"+key.replaceAll("\\.", "/")+".js"));
 				Object ret = JsInvoker.invokeJsMethod(jsObject, funcName, args);
 				if(ret == null){
 					return null;

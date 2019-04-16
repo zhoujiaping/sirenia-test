@@ -1,2 +1,2 @@
-test-dubboConsumerMethodFilter=org.sirenia.test.start.DubboConsumerMethodFilter
+test-dubboConsumerMethodFilter=com.sfpaytest.jyd.start.DubboConsumerMethodFilter
 

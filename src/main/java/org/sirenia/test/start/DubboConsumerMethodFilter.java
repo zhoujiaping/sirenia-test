@@ -17,19 +17,19 @@ import com.alibaba.dubbo.rpc.RpcResult;
 
 public class DubboConsumerMethodFilter implements Filter {
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
-	private AspectConf aspectConf;
+	private JsAspectConf jsAspectConf;
 	@Override
 	public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
-		if(aspectConf==null){
-			aspectConf = AppContextHolder.getApplicationContext().getBean(AspectConf.class);
+		if(jsAspectConf==null){
+			jsAspectConf = AppContextHolder.getApplicationContext().getBean(JsAspectConf.class);
 		}
 		String interfaceName = invoker.getInterface().getName();
 		Object[] args = invocation.getArguments();
 		String methodName = invocation.getMethodName();
 		try{
-			String key = aspectConf.getAppName()+"."+interfaceName;
-			if(aspectConf.methodSet.contains(key+"."+methodName)){
-				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(aspectConf.getJsDir()+"/"+key.replaceAll("\\.", "/")+".js"));
+			String key = jsAspectConf.getAppName()+"."+interfaceName;
+			if(jsAspectConf.methodSet.contains(key+"."+methodName)){
+				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(jsAspectConf.getJsDir()+"/"+key.replaceAll("\\.", "/")+".js"));
 				Object ret = JsInvoker.invokeJsMethod(jsObject, methodName, args);
 				if(ret == null){
 					return null;
