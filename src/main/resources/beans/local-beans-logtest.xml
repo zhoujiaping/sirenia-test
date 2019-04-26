@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <beans xmlns="http://www.springframework.org/schema/beans"
-       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-       xmlns:context="http://www.springframework.org/schema/context"
-       xmlns:aop="http://www.springframework.org/schema/aop"
-       xmlns:tx="http://www.springframework.org/schema/tx"
-       xmlns:mvc="http://www.springframework.org/schema/mvc"
-       xmlns:task="http://www.springframework.org/schema/task" 
-       xsi:schemaLocation="
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:aop="http://www.springframework.org/schema/aop" xmlns:tx="http://www.springframework.org/schema/tx"
+	xmlns:mvc="http://www.springframework.org/schema/mvc" xmlns:task="http://www.springframework.org/schema/task"
+	xsi:schemaLocation="
        http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd  
        http://www.springframework.org/schema/context  http://www.springframework.org/schema/context/spring-context.xsd  
        http://www.springframework.org/schema/aop  http://www.springframework.org/schema/aop/spring-aop.xsd
@@ -15,60 +12,57 @@
        http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
        ">
 	<!-- 使用cglib代理，否则非接口类无法代理 -->
-	<aop:aspectj-autoproxy proxy-target-class="true"/>
-<!-- <bean id="test-appContextHolder" class="org.sirenia.test.start.AppContextHolder"></bean> -->
-	<bean id="test-jsAspectConf" name="jsAspectConf" class="org.sirenia.test.start.JsAspectConf">
+	<aop:aspectj-autoproxy proxy-target-class="true" />
+	<!-- <bean id="test-appContextHolder" class="org.sirenia.test.start.AppContextHolder"></bean> -->
+	<bean id="test-jsAspectConf" name="jsAspectConf"
+		class="org.sirenia.test.start.JsAspectConf">
 		<property name="appName" value="${project.name}"></property>
 		<property name="dataDir" value="/my/sirenia-test-js"></property>
+		<property name="clazznameRegexp" value="com\.xx\..*|com\.xx\..*"></property>
+		<property name="clazznameRegexpExlude" value="com\.xx\.framework2.*"></property>
+		<!-- 请求、响应、会话三个类的序列化使用toString策略 -->
+		<property name="stringSerializerClasses">
+			<list>
+				<value>org.apache.catalina.connector.ResponseFacade</value>
+				<value></value>
+				<value></value>
+			</list>
+		</property>
 	</bean>
-	<!-- <bean id="test-hessianMethodInterceptor" class="org.sirenia.test.start.HessianMethodInterceptor">
+	<!-- <bean id="test-hessianMethodInterceptor" class="org.sirenia.test.start.HessianMethodInterceptor"> 
+		<property name="jsAspectConf" ref="test-jsAspectConf"></property> </bean> -->
+	<bean id="test-methodSetLoader" class="org.sirenia.test.start.MethodSetLoader"
+		init-method="init">
 		<property name="jsAspectConf" ref="test-jsAspectConf"></property>
-	</bean>-->
-	<bean id="test-methodSetLoader" class="org.sirenia.test.start.MethodSetLoader" init-method="init">
-		<property name="jsAspectConf" ref="test-jsAspectConf"></property>
-	</bean> 
+	</bean>
 	<!-- 定义切面 -->
-	<bean id="test-jsAspect" class="org.sirenia.test.start.JsAspect">
-			<property name="jsAspectConf" ref="test-jsAspectConf"></property>
-			<property name="clazznameRegexp" value="com\.xx\..*|com\.xx\..*"></property>
-			<property name="clazznameRegexpExlude" value="com\.xx\.framework2.*"></property>
+	<bean id="test-jsAspect" class="org.sirenia.test.start.JsAspect"
+		init-method="init">
+		<property name="jsAspectConf" ref="test-jsAspectConf"></property>
 	</bean>
-	<bean id="test-logAspect" class="org.sirenia.test.start.LogAspect">
-			<property name="appName" value="${project.name}"></property>
-			<property name="dataDir" value="/my/sirenia-test-log"></property>
-			<property name="clazznameRegexp" value="com\.xx\..*|com\.xx\..*"></property>
-			<property name="clazznameRegexpExlude" value="com\.xx\.framework2.*"></property>
+	<bean id="test-logAspect" class="org.sirenia.test.start.LogAspect"
+		init-method="init">
+		<property name="jsAspectConf" ref="test-jsAspectConf"></property>
 	</bean>
 	<aop:config>
-		 <!-- 定义切点函数 -->
-	    <aop:pointcut id="pointcut" expression="execution(* com.xx..*(..)) or execution(* com.xx..*(..))" />
-		<!-- 配置AOP 切面
-        定义通知 order 定义优先级,值越小优先级越大
-        <aop:aspect ref="test-jsAspect" order="0">
-            定义通知
-            method 指定通知方法名,必须与MyAspectXML中的相同
-            pointcut 指定切点函数
-           
-            <aop:before method="before" pointcut-ref="pointcut" />
-            后置通知  returning="returnVal" 定义返回值 必须与类中声明的名称一样
-            <aop:after-returning method="afterReturn" pointcut-ref="pointcut"  returning="returnVal" />
-            环绕通知
-            <aop:around method="around" pointcut-ref="pointcut"  />
-            异常通知 throwing="throwable" 指定异常通知错误信息变量,必须与类中声明的名称一样
-            <aop:after-throwing method="afterThrowing" pointcut-ref="pointcut" throwing="throwable"/>
-            
-                 method : 通知的方法(最终通知)
-                 pointcut-ref : 通知应用到的切点方法
-               
-            <aop:after method="after" pointcut-ref="pointcut"/>
-        </aop:aspect> -->
-        
-	        <!-- 定义通知 order 定义优先级,值越小优先级越大-->
-	        <!-- <aop:aspect ref="test-jsAspect" order="0">
-	            <aop:around method="around" pointcut-ref="pointcut"  />
-	        </aop:aspect> -->
-	        <aop:aspect ref="test-logAspect" order="1">
-	              <aop:around method="around" pointcut-ref="pointcut"  />
-	        </aop:aspect>
-    </aop:config>
+		<!-- 定义切点函数 -->
+		<aop:pointcut id="pointcut"
+			expression="execution(* com.xx..*(..)) or execution(* com.xx..*(..))" />
+		<!-- 配置AOP 切面 定义通知 order 定义优先级,值越小优先级越大 <aop:aspect ref="test-jsAspect" 
+			order="0"> 定义通知 method 指定通知方法名,必须与MyAspectXML中的相同 pointcut 指定切点函数 <aop:before 
+			method="before" pointcut-ref="pointcut" /> 后置通知 returning="returnVal" 定义返回值 
+			必须与类中声明的名称一样 <aop:after-returning method="afterReturn" pointcut-ref="pointcut" 
+			returning="returnVal" /> 环绕通知 <aop:around method="around" pointcut-ref="pointcut" 
+			/> 异常通知 throwing="throwable" 指定异常通知错误信息变量,必须与类中声明的名称一样 <aop:after-throwing 
+			method="afterThrowing" pointcut-ref="pointcut" throwing="throwable"/> method 
+			: 通知的方法(最终通知) pointcut-ref : 通知应用到的切点方法 <aop:after method="after" pointcut-ref="pointcut"/> 
+			</aop:aspect> -->
+
+		<!-- 定义通知 order 定义优先级,值越小优先级越大 -->
+		<!-- <aop:aspect ref="test-jsAspect" order="0"> <aop:around method="around" 
+			pointcut-ref="pointcut" /> </aop:aspect> -->
+		<aop:aspect ref="test-logAspect" order="1">
+			<aop:around method="around" pointcut-ref="pointcut" />
+		</aop:aspect>
+	</aop:config>
 </beans>

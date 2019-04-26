@@ -3,17 +3,18 @@ package org.sirenia.test.start;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
+import java.util.List;
 import java.util.Set;
 
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.Signature;
-import org.aspectj.lang.reflect.MethodSignature;
 import org.sirenia.test.util.JsInvoker;
 import org.sirenia.test.util.MethodUtil;
 import org.sirenia.test.util.ReflectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.ResourceUtils;
+import org.springframework.util.StringUtils;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.JSONSerializer;
@@ -24,10 +25,12 @@ import com.alibaba.fastjson.serializer.SerializeConfig;
 public class JsAspect {
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private JsAspectConf jsAspectConf;
-	private String clazznameRegexp;
-	private String clazznameRegexpExlude;
+
 	private SerializeConfig config = new SerializeConfig();
 	public JsAspect(){
+		
+	}
+	public void init(){
 		ObjectSerializer toStringSerializer = new ObjectSerializer() {
 			@Override
 			public void write(JSONSerializer serializer, Object object, Object fieldName, Type fieldType, int features)
@@ -37,24 +40,24 @@ public class JsAspect {
 		};
 		//config.put(org.apache.catalina.connector.ResponseFacade.class, toStringSerializer);
 		try {
-			Class<?> responseClass = Class.forName("org.apache.catalina.connector.ResponseFacade");
+			List<String> classNames = jsAspectConf.getStringSerializerClasses();
+			for(String name : classNames){
+				if(StringUtils.hasText(name)){
+					Class<?> clazz = Class.forName("");
+					config.put(clazz, toStringSerializer);
+				}
+			}
+		/*	Class<?> responseClass = Class.forName("org.apache.catalina.connector.ResponseFacade");
 			Class<?> requestClass = Class.forName("");
 			Class<?> sessionClass = Class.forName("");
-			config.put(responseClass, toStringSerializer);
 			config.put(requestClass, toStringSerializer);
 			config.put(sessionClass, toStringSerializer);
-		} catch (ClassNotFoundException e) {
+*/		} catch (ClassNotFoundException e) {
 			throw new RuntimeException(e);
 		}
 	}
-	public void setClazznameRegexpExlude(String clazznameRegexpExlude) {
-		this.clazznameRegexpExlude = clazznameRegexpExlude;
-	}
 	public void setJsAspectConf(JsAspectConf jsAspectConf) {
 		this.jsAspectConf = jsAspectConf;
-	}
-	public void setClazznameRegexp(String clazznameRegexp) {
-		this.clazznameRegexp = clazznameRegexp;
 	}
 	/**
 	 * 环绕通知
@@ -70,17 +73,18 @@ public class JsAspect {
 		//从配置中读取需要调用js的接口，如果在列表中，则调用对应的方法。
 		//列表自动更新，通过文件监听，判断配置是否被修改过。
 		Signature signature =	joinPoint.getSignature();
-		MethodSignature ms = (MethodSignature)signature;
+		//MethodSignature ms = (MethodSignature)signature;
 		Object[] args = joinPoint.getArgs();
 		String funcName = signature.getName();//方法名
 		Class<?> targetClazz = joinPoint.getTarget().getClass();
 		String clazzname = targetClazz.getName();
+		String clazznameRegexp = jsAspectConf.getClazznameRegexp();
 		/*
 		 * 对于dubbo接口和hessian接口，在本地的实现类是jdk动态代理。
 		 * */
 		if (clazzname.startsWith("com.sun.proxy")) {
 			// mybatis mapper接口，hessian接口
-			clazzname = findClazzname(targetClazz,clazznameRegexp);
+			clazzname = findClazzname(targetClazz,clazznameRegexp );
 		} else if (clazzname.startsWith("com.alibaba.dubbo.common.bytecode.proxy")) {
 			// dubbo接口
 			Object methodInvocation = ReflectHelper.getValueByFieldName(joinPoint, "methodInvocation");
@@ -96,7 +100,8 @@ public class JsAspect {
 			clazzname = findClazzname(targetClazz,clazznameRegexp);
 		}
 
-		if(isExclude(clazzname, clazznameRegexpExlude)){
+		String clazznameRegexpExlude = jsAspectConf.getClazznameRegexpExlude();
+		if(isExclude(clazzname, clazznameRegexpExlude )){
 			return joinPoint.proceed();
 		}
 		try{
@@ -142,7 +147,7 @@ public class JsAspect {
 		}
 		return clazzname;
 	}
-	private boolean isExclude(String clazzname, String clazznameRegexpExlude2) {
+	private boolean isExclude(String clazzname, String clazznameRegexpExlude) {
 		return clazznameRegexpExlude!=null && clazzname.matches(clazznameRegexpExlude);
 	}
 	/**

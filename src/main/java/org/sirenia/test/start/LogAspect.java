@@ -8,6 +8,7 @@ import java.io.OutputStreamWriter;
 import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Set;
 
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -15,6 +16,7 @@ import org.aspectj.lang.Signature;
 import org.sirenia.test.util.ReflectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.StringUtils;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.JSONSerializer;
@@ -25,12 +27,15 @@ import com.alibaba.fastjson.serializer.SerializerFeature;
 public class LogAspect {
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private static final String DateFormat = "yyyyMMdd";
-
-	private String dataDir;
-	private String appName;
+	private JsAspectConf jsAspectConf;
 	private SerializeConfig config = new SerializeConfig();
 
 	public LogAspect() {
+	}
+	public void setJsAspectConf(JsAspectConf jsAspectConf) {
+		this.jsAspectConf = jsAspectConf;
+	}
+	public void init(){
 		ObjectSerializer toStringSerializer = new ObjectSerializer() {
 			@Override
 			public void write(JSONSerializer serializer, Object object, Object fieldName, Type fieldType, int features)
@@ -38,39 +43,24 @@ public class LogAspect {
 				serializer.write(object.toString());
 			}
 		};
-		// config.put(org.apache.catalina.connector.ResponseFacade.class,
-		// toStringSerializer);
+		//config.put(org.apache.catalina.connector.ResponseFacade.class, toStringSerializer);
 		try {
-			Class<?> responseClass = Class.forName("org.apache.catalina.connector.ResponseFacade");
+			List<String> classNames = jsAspectConf.getStringSerializerClasses();
+			for(String name : classNames){
+				if(StringUtils.hasText(name)){
+					Class<?> clazz = Class.forName("");
+					config.put(clazz, toStringSerializer);
+				}
+			}
+		/*	Class<?> responseClass = Class.forName("org.apache.catalina.connector.ResponseFacade");
 			Class<?> requestClass = Class.forName("");
 			Class<?> sessionClass = Class.forName("");
-			config.put(responseClass, toStringSerializer);
 			config.put(requestClass, toStringSerializer);
 			config.put(sessionClass, toStringSerializer);
-		} catch (ClassNotFoundException e) {
+*/		} catch (ClassNotFoundException e) {
 			throw new RuntimeException(e);
 		}
 	}
-
-	public void setAppName(String appName) {
-		this.appName = appName;
-	}
-
-	public void setDataDir(String dataDir) {
-		this.dataDir = dataDir;
-	}
-
-	private String clazznameRegexp;
-	private String clazznameRegexpExlude;
-
-	public void setClazznameRegexpExlude(String clazznameRegexpExlude) {
-		this.clazznameRegexpExlude = clazznameRegexpExlude;
-	}
-
-	public void setClazznameRegexp(String clazznameRegexp) {
-		this.clazznameRegexp = clazznameRegexp;
-	}
-
 	/**
 	 * 环绕通知
 	 * 
@@ -88,12 +78,13 @@ public class LogAspect {
 			String funcName = signature.getName();// 方法名
 			Class<?> targetClazz = joinPoint.getTarget().getClass();
 			String clazzname = targetClazz.getName();
+			String clazznameRegexp = jsAspectConf.getClazznameRegexp();
 			/*
 			 * 对于dubbo接口和hessian接口，在本地的实现类是jdk动态代理。
 			 */
 			if (clazzname.startsWith("com.sun.proxy")) {
 				// mybatis mapper接口，hessian接口
-				clazzname = findClazzname(targetClazz, clazznameRegexp);
+				clazzname = findClazzname(targetClazz, clazznameRegexp );
 			} else if (clazzname.startsWith("com.alibaba.dubbo.common.bytecode.proxy")) {
 				// dubbo接口
 				Object methodInvocation = ReflectHelper.getValueByFieldName(joinPoint, "methodInvocation");
@@ -109,12 +100,14 @@ public class LogAspect {
 				clazzname = findClazzname(targetClazz, clazznameRegexp);
 			}
 
-			if (isExclude(clazzname, clazznameRegexpExlude)) {
+			String clazznameRegexpExlude = jsAspectConf.getClazznameRegexpExlude();
+			if (isExclude(clazzname, clazznameRegexpExlude )) {
 				return joinPoint.proceed();
 			}
+			String appName = jsAspectConf.getAppName();
 			// String mkey = key + "." + funcName;
 			// 记录方法的执行
-			saveInvoke(appName, clazzname, funcName);
+			saveInvoke(appName , clazzname, funcName);
 			// 保存入参到文件
 			/*
 			 * #issue 1
@@ -173,7 +166,8 @@ public class LogAspect {
 
 	private void saveInvoke(String appName, String clazzname, String funcName) throws Exception {
 		String date = new SimpleDateFormat(DateFormat).format(new Date());
-		File file = new File(dataDir, date + "/method-invoke.log");
+		String dataDir = jsAspectConf.getDataDir();
+		File file = new File(dataDir , date + "/method-invoke.log");
 		makeFileNX(file);
 		appendToFile(file, appName + "." + clazzname + "." + funcName);
 	}
@@ -203,13 +197,15 @@ public class LogAspect {
 
 	private void saveResult(String appName, String clazzname, String funcName, Object ret) throws Exception {
 		String date = new SimpleDateFormat(DateFormat).format(new Date());
-		File file = new File(dataDir, date + "/" + appName + "/" + clazzname.replaceAll("\\.", "/"));
+		String dataDir = jsAspectConf.getDataDir();
+		File file = new File(dataDir , date + "/" + appName + "/" + clazzname.replaceAll("\\.", "/"));
 		makeParentFileNX(file);
 		appendToFile(file, funcName + "出参：" + System.lineSeparator() + JSON.toJSONString(ret, true));
 	}
 
 	private void saveException(String appName, String clazzname, String funcName, Exception e) throws Exception {
 		String date = new SimpleDateFormat(DateFormat).format(new Date());
+		String dataDir = jsAspectConf.getDataDir();
 		File file = new File(dataDir, date + "/" + appName + "/" + clazzname.replaceAll("\\.", "/"));
 		makeParentFileNX(file);
 		appendToFile(file, funcName + "出参（异常）：" + System.lineSeparator() + e.getClass().getName()
@@ -218,6 +214,7 @@ public class LogAspect {
 
 	private void saveParam(String appName, String clazzname, String funcName, Object[] args) throws Exception {
 		String date = new SimpleDateFormat(DateFormat).format(new Date());
+		String dataDir = jsAspectConf.getDataDir();
 		File file = new File(dataDir, date + "/" + appName + "/" + clazzname.replaceAll("\\.", "/"));
 		makeParentFileNX(file);
 		// beforeFilter
