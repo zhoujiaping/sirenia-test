@@ -11,6 +11,7 @@ import org.aspectj.lang.Signature;
 import org.sirenia.test.util.JsInvoker;
 import org.sirenia.test.util.MethodUtil;
 import org.sirenia.test.util.ReflectHelper;
+import org.sirenia.test.util.UnitTest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.ResourceUtils;
@@ -105,17 +106,17 @@ public class JsAspect {
 			return joinPoint.proceed();
 		}
 		try{
-			String key = jsAspectConf.getAppName()+"."+clazzname;
-			String mkey = key+"."+funcName;
-			if(jsAspectConf.methodSet.contains(mkey)){
+			String key = clazzname+"#"+funcName;
+			String dataDir = jsAspectConf.getJsDir()+"/"+UnitTest.dataDirHolder.get();
+			if(jsAspectConf.methodSet.contains(key)){
 				if(isExclude(clazzname,clazznameRegexpExlude)){
 					return joinPoint.proceed();
 				}
 				Object param = JSON.toJSONString(args,config);
-				logger.info("执行Mock【{}】，入参：{}",mkey,param);
-				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(jsAspectConf.getJsDir()+"/"+key.replaceAll("\\.", "/")+".js"));
-				Object ret = JsInvoker.invokeJsMethod(jsObject, funcName, param);
-				logger.info("执行Mock【{}】，出参：{}",mkey,ret);
+				logger.info("执行Mock【{}】方法【{}】，入参：{}",dataDir,key,param);
+				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(dataDir+"/mock.js"),false);
+				Object ret = JsInvoker.invokeJsMethod(jsObject, funcName, key,param);
+				logger.info("执行Mock【{}】方法【{}】，出参：{}",dataDir,key,ret);
 				if(ret == null){
 					return null;
 				}

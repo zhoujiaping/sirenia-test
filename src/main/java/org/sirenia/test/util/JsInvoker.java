@@ -24,10 +24,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.util.ResourceUtils;
 
 /**
- * 这个工具类，可以执行js脚本。js脚本中可以调用java类或者java对象的方法。返回值可以是java对象。
- * 主要可以用来为java添加动态性。
- * 和java动态加载类的方式相比，这里的方式不会污染jvm环境。
- * 和使用groovy相比，不用引入groovy一大堆包。对java支持没groovy好。
+ * 这个工具类，可以执行js脚本。js脚本中可以调用java类或者java对象的方法。返回值可以是java对象。 主要可以用来为java添加动态性。
+ * 和java动态加载类的方式相比，这里的方式不会污染jvm环境。 和使用groovy相比，不用引入groovy一大堆包。对java支持没groovy好。
  * 和使用http代理相比，这里是本地调用，性能上有优势，在处理事务时不会引入分布式事务问题。
  * 
  * 重复加载文件的问题已经通过缓存解决。 增加了目录监听功能，如果文件发生修改，会在下一次执行该脚本的函数时，读取文件内容兵保存到缓存。
@@ -41,15 +39,13 @@ import org.springframework.util.ResourceUtils;
  * 
  * js脚本中的load不会返回到java。所以不用那种方式。
  * 
- * 参考
- * jdk.nashorn.internal.objects.Global
+ * 参考 jdk.nashorn.internal.objects.Global
  */
 public class JsInvoker {
 	private static final Logger logger = LoggerFactory.getLogger(JsInvoker.class);
 	public static ScriptEngine engine = new ScriptEngineManager().getEngineByName("js");
 	private static Invocable invocable = (Invocable) engine;
 	private static LRUCache<String, Object> jsObjectCache = new LRUCache<>(1000);
-	private static LRUCache<String, String> fileChangeCache = new LRUCache<>(1000);// filename->""
 	private static Lock lock = new ReentrantLock();
 	private static long lockTime = 1000 * 10;
 	private static TimeUnit timeUnit = TimeUnit.SECONDS;
@@ -81,12 +77,12 @@ public class JsInvoker {
 		}
 	}
 
-	public static void watch(final String dir) {
-		Thread t = new Thread(new Runnable(){
+	public static void watch(final String dir, Callback10<Object> afterEval) {
+		Thread t = new Thread(new Runnable() {
 			@Override
 			public void run() {
 				try {
-					watchInternal(dir);
+					watchInternal(dir, afterEval);
 				} catch (Exception e) {
 					logger.error("监听js文件目录" + dir + "异常", e);
 					throw new RuntimeException(e);
@@ -97,7 +93,7 @@ public class JsInvoker {
 		t.start();
 	}
 
-	private static void watchInternal(String dir) {
+	private static void watchInternal(String dir, Callback10<Object> afterEval) {
 		File dirFile;
 		try {
 			dirFile = ResourceUtils.getFile(dir);
@@ -111,19 +107,14 @@ public class JsInvoker {
 			public void apply(WatchEvent<?> event) {
 				String filename = event.context().toString();
 				File file = new File(dirFilePath, filename);
-				// 優化:不要文件有修改就重新加载文件，而是先记录修改，用的时候才重新加载
 				// String fileText = readFileText(file);
-				String key = getKey(file);
-				markChanged(key);
-				System.out.println(file.getName());
+				Object jsObject = evalFile(file,true);
+				if(afterEval != null){
+					afterEval.apply(jsObject);
+				}
 				// fileTextCache.put(file.getAbsolutePath(), fileText);
 			}
 		});
-	}
-	public static void markChanged(String key){
-		if (jsObjectCache.containsKey(key)) {// 只有在缓存中有的才需要标记为已改变
-			fileChangeCache.put(key, "");
-		}
 	}
 
 	private static String getKey(File file) {
@@ -132,8 +123,8 @@ public class JsInvoker {
 
 	public static void main(String[] args)
 			throws InterruptedException, ScriptException, NoSuchMethodException, FileNotFoundException {
-		watch("classpath:js");
-		Object http = evalFile(ResourceUtils.getFile("classpath:js/builtin/http.js"));
+		watch("classpath:js",null);
+		Object http = evalFile(ResourceUtils.getFile("classpath:js/builtin/http.js"),false);
 		Object res = invokeJsMethod(http, "post", "http://www.baidu.com", "");
 		System.out.println(res);
 		res = invokeJavaMethod(new Date(), "getTime");
@@ -145,11 +136,11 @@ public class JsInvoker {
 		System.out.println(res);
 		// Object res = invokeMethod2(new Date(),"getTime");
 		// System.out.println(res);
-		Object httptest = evalFile(ResourceUtils.getFile("classpath:js/httptest.js"));
+		Object httptest = evalFile(ResourceUtils.getFile("classpath:js/httptest.js"),false);
 		res = invokeJsMethod(httptest, "test");
 		System.out.println(res);
-		
-		res = invokeJsMethodReturnJSON(httptest,"testjson");
+
+		res = invokeJsMethodReturnJSON(httptest, "testjson");
 		System.out.println(res);
 	}
 
@@ -167,44 +158,40 @@ public class JsInvoker {
 	 * @param file
 	 * @return
 	 */
-	public static Object evalFile(File file) {
+	public static Object evalFile(File file,boolean forceEval) {
 		try {
-			lock.tryLock(lockTime, timeUnit);
-			String key = getKey(file);
-			String fileText = null;
-			if (fileChangeCache.containsKey(key)) {
-				fileText = readFileText(file);
-				fileChangeCache.remove(key);
-				Object jsObject = engine.eval(fileText);
-				jsObjectCache.put(key, jsObject);
-				return jsObject;
-			} else {
-				Object jsObject = jsObjectCache.get(key);
-				if (jsObject == null) {
+			if(lock.tryLock(lockTime, timeUnit)){
+				String fileText = null;
+				String key = getKey(file);
+				Object jsObject = null;
+				if(forceEval){
 					fileText = readFileText(file);
 					jsObject = engine.eval(fileText);
 					jsObjectCache.put(key, jsObject);
+				}else{
+					jsObject = jsObjectCache.get(key);
+					if (jsObject == null) {
+						fileText = readFileText(file);
+						jsObject = engine.eval(fileText);
+						jsObjectCache.put(key, jsObject);
+					}
 				}
 				return jsObject;
 			}
+			throw new RuntimeException("获取锁失败");
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
 			lock.unlock();
 		}
 	}
-	public static Object evalText(String key,String text) {
+
+	public static Object evalText(String key, String text,boolean forceEval) {
 		try {
-			lock.tryLock(lockTime, timeUnit);
-			if(key==null){
-				return engine.eval(text);
-			}
-			if (fileChangeCache.containsKey(key)) {
-				fileChangeCache.remove(key);
-				Object jsObject = engine.eval(text);
-				jsObjectCache.put(key, jsObject);
-				return jsObject;
-			} else {
+			if(lock.tryLock(lockTime, timeUnit)){
+				if (key == null) {
+					return engine.eval(text);
+				}
 				Object jsObject = jsObjectCache.get(key);
 				if (jsObject == null) {
 					jsObject = engine.eval(text);
@@ -212,6 +199,7 @@ public class JsInvoker {
 				}
 				return jsObject;
 			}
+			throw new RuntimeException("获取锁失败");
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
@@ -229,9 +217,11 @@ public class JsInvoker {
 
 	public static Object invokeJavaStaticMethod(Class<?> clazz, String method, Object... args) {
 		try {
-			lock.tryLock(lockTime, timeUnit);
-			Object invoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/java.js"));
-			return invocable.invokeMethod(invoker, "invokeStatic", clazz.getName(), method, args);
+			if(lock.tryLock(lockTime, timeUnit)){
+				Object invoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/java.js"),false);
+				return invocable.invokeMethod(invoker, "invokeStatic", clazz.getName(), method, args);
+			}
+			throw new RuntimeException("获取锁失败");
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
@@ -251,9 +241,11 @@ public class JsInvoker {
 	 */
 	public static Object invokeJavaMethod(Object target, String method, Object... args) {
 		try {
-			lock.tryLock(lockTime, timeUnit);
-			Object invoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/java.js"));
-			return invocable.invokeMethod(invoker, "invoke", target, method, args);
+			if(lock.tryLock(lockTime, timeUnit)){
+				Object invoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/java.js"),false);
+				return invocable.invokeMethod(invoker, "invoke", target, method, args);
+			}
+			throw new RuntimeException("获取锁失败");
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
@@ -273,15 +265,18 @@ public class JsInvoker {
 	 */
 	public static Object invokeJsMethod(Object target, String method, Object... args) {
 		try {
-			lock.tryLock(lockTime, timeUnit);
-			Object res = invocable.invokeMethod(target, method, args);
-			return res;
+			if (lock.tryLock(lockTime, timeUnit)) {
+				Object res = invocable.invokeMethod(target, method, args);
+				return res;
+			}
+			throw new RuntimeException("获取锁失败");
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
 			lock.unlock();
 		}
 	}
+
 	/**
 	 * @param target
 	 * @param method
@@ -290,10 +285,12 @@ public class JsInvoker {
 	 */
 	public static Object invokeJsMethodReturnJSON(Object target, String method, Object... args) {
 		try {
-			lock.tryLock(lockTime, timeUnit);
-			Object jsInvoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/js.js"));
-			Object res = invocable.invokeMethod(jsInvoker,"invoke",target, method, args);
-			return res;
+			if(lock.tryLock(lockTime, timeUnit)){
+				Object jsInvoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/js.js"),false);
+				Object res = invocable.invokeMethod(jsInvoker, "invoke", target, method, args);
+				return res;
+			}
+			throw new RuntimeException("获取锁失败");
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {

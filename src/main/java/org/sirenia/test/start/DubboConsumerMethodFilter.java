@@ -29,7 +29,7 @@ public class DubboConsumerMethodFilter implements Filter {
 		try{
 			String key = jsAspectConf.getAppName()+"."+interfaceName;
 			if(jsAspectConf.methodSet.contains(key+"."+methodName)){
-				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(jsAspectConf.getJsDir()+"/"+key.replaceAll("\\.", "/")+".js"));
+				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(jsAspectConf.getJsDir()+"/"+key.replaceAll("\\.", "/")+".js"),false);
 				Object ret = JsInvoker.invokeJsMethod(jsObject, methodName, args);
 				if(ret == null){
 					return null;
