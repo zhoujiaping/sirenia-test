@@ -11,6 +11,7 @@ public class CollectionUtil {
 	 * @param componentType
 	 * @return
 	 */
+	@SuppressWarnings("unchecked")
 	public static <T> T[] toArray(Collection<?> collection,Class<T> componentType){
 		if(collection==null){
 			return null;
@@ -25,6 +26,7 @@ public class CollectionUtil {
 	 * @param componentType
 	 * @return
 	 */
+	@SuppressWarnings("unchecked")
 	public static <T,E> T[] toArray(E[] collection,Class<T> componentType){
 		if(collection==null){
 			return null;

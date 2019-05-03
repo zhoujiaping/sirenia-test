@@ -32,10 +32,12 @@ public class LogAspect {
 
 	public LogAspect() {
 	}
+
 	public void setJsAspectConf(JsAspectConf jsAspectConf) {
 		this.jsAspectConf = jsAspectConf;
 	}
-	public void init(){
+
+	public void init() {
 		ObjectSerializer toStringSerializer = new ObjectSerializer() {
 			@Override
 			public void write(JSONSerializer serializer, Object object, Object fieldName, Type fieldType, int features)
@@ -43,24 +45,21 @@ public class LogAspect {
 				serializer.write(object.toString());
 			}
 		};
-		//config.put(org.apache.catalina.connector.ResponseFacade.class, toStringSerializer);
-		try {
-			List<String> classNames = jsAspectConf.getStringSerializerClasses();
-			for(String name : classNames){
-				if(StringUtils.hasText(name)){
-					Class<?> clazz = Class.forName("");
+		// config.put(org.apache.catalina.connector.ResponseFacade.class,
+		// toStringSerializer);
+		List<String> classNames = jsAspectConf.getStringSerializerClasses();
+		for (String name : classNames) {
+			try {
+				if (StringUtils.hasText(name)) {
+					Class<?> clazz = Class.forName(name);
 					config.put(clazz, toStringSerializer);
 				}
+			} catch (ClassNotFoundException e) {
+				logger.warn("ClassNotFound：【{}】",name);
 			}
-		/*	Class<?> responseClass = Class.forName("org.apache.catalina.connector.ResponseFacade");
-			Class<?> requestClass = Class.forName("");
-			Class<?> sessionClass = Class.forName("");
-			config.put(requestClass, toStringSerializer);
-			config.put(sessionClass, toStringSerializer);
-*/		} catch (ClassNotFoundException e) {
-			throw new RuntimeException(e);
 		}
 	}
+
 	/**
 	 * 环绕通知
 	 * 
@@ -84,7 +83,7 @@ public class LogAspect {
 			 */
 			if (clazzname.startsWith("com.sun.proxy")) {
 				// mybatis mapper接口，hessian接口
-				clazzname = findClazzname(targetClazz, clazznameRegexp );
+				clazzname = findClazzname(targetClazz, clazznameRegexp);
 			} else if (clazzname.startsWith("com.alibaba.dubbo.common.bytecode.proxy")) {
 				// dubbo接口
 				Object methodInvocation = ReflectHelper.getValueByFieldName(joinPoint, "methodInvocation");
@@ -101,13 +100,12 @@ public class LogAspect {
 			}
 
 			String clazznameRegexpExlude = jsAspectConf.getClazznameRegexpExlude();
-			if (isExclude(clazzname, clazznameRegexpExlude )) {
+			if (isExclude(clazzname, clazznameRegexpExlude)) {
 				return joinPoint.proceed();
 			}
-			String appName = jsAspectConf.getAppName();
 			// String mkey = key + "." + funcName;
 			// 记录方法的执行
-			saveInvoke(appName , clazzname, funcName);
+			saveInvoke(clazzname, funcName);
 			// 保存入参到文件
 			/*
 			 * #issue 1
@@ -121,17 +119,17 @@ public class LogAspect {
 
 				}
 			}
-			saveParam(appName, clazzname, funcName, argsToLog);
+			saveParam(clazzname, funcName, argsToLog);
 			try {
 				ret = joinPoint.proceed();
 			} catch (Exception e) {
 				// 保存异常到文件
-				saveException(appName, clazzname, funcName, e);
+				saveException(clazzname, funcName, e);
 			} finally {
 				proceed = true;
 			}
 			// 保存出参到文件
-			saveResult(appName, clazzname, funcName, ret);
+			saveResult(clazzname, funcName, ret);
 		} catch (Exception e) {
 			logger.warn("LogAspect执行js异常", e);
 			if (!proceed) {
@@ -164,12 +162,12 @@ public class LogAspect {
 		return clazznameRegexpExlude != null && clazzname.matches(clazznameRegexpExlude);
 	}
 
-	private void saveInvoke(String appName, String clazzname, String funcName) throws Exception {
+	private void saveInvoke(String clazzname, String funcName) throws Exception {
 		String date = new SimpleDateFormat(DateFormat).format(new Date());
-		String dataDir = jsAspectConf.getDataDir();
-		File file = new File(dataDir , date + "/method-invoke.log");
+		String dataDir = jsAspectConf.getDataHome();
+		File file = new File(dataDir, date + "/method-invoke.log");
 		makeFileNX(file);
-		appendToFile(file, appName + "." + clazzname + "." + funcName);
+		appendToFile(file, clazzname + "#" + funcName);
 	}
 
 	private void appendToFile(File file, String string) throws Exception {
@@ -195,27 +193,27 @@ public class LogAspect {
 		file.createNewFile();
 	}
 
-	private void saveResult(String appName, String clazzname, String funcName, Object ret) throws Exception {
+	private void saveResult(String clazzname, String funcName, Object ret) throws Exception {
 		String date = new SimpleDateFormat(DateFormat).format(new Date());
-		String dataDir = jsAspectConf.getDataDir();
-		File file = new File(dataDir , date + "/" + appName + "/" + clazzname.replaceAll("\\.", "/"));
+		String dataDir = jsAspectConf.getDataHome();
+		File file = new File(dataDir, date + "/" + clazzname.replaceAll("\\.", "/"));
 		makeParentFileNX(file);
 		appendToFile(file, funcName + "出参：" + System.lineSeparator() + JSON.toJSONString(ret, true));
 	}
 
-	private void saveException(String appName, String clazzname, String funcName, Exception e) throws Exception {
+	private void saveException(String clazzname, String funcName, Exception e) throws Exception {
 		String date = new SimpleDateFormat(DateFormat).format(new Date());
-		String dataDir = jsAspectConf.getDataDir();
-		File file = new File(dataDir, date + "/" + appName + "/" + clazzname.replaceAll("\\.", "/"));
+		String dataDir = jsAspectConf.getDataHome();
+		File file = new File(dataDir, date + "/" + clazzname.replaceAll("\\.", "/"));
 		makeParentFileNX(file);
 		appendToFile(file, funcName + "出参（异常）：" + System.lineSeparator() + e.getClass().getName()
 				+ System.lineSeparator() + e.getMessage());
 	}
 
-	private void saveParam(String appName, String clazzname, String funcName, Object[] args) throws Exception {
+	private void saveParam(String clazzname, String funcName, Object[] args) throws Exception {
 		String date = new SimpleDateFormat(DateFormat).format(new Date());
-		String dataDir = jsAspectConf.getDataDir();
-		File file = new File(dataDir, date + "/" + appName + "/" + clazzname.replaceAll("\\.", "/"));
+		String dataDir = jsAspectConf.getDataHome();
+		File file = new File(dataDir, date + "/" + clazzname.replaceAll("\\.", "/"));
 		makeParentFileNX(file);
 		// beforeFilter
 		String in = JSON.toJSONString(args, config, SerializerFeature.PrettyFormat);

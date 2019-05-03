@@ -2,14 +2,17 @@ package org.sirenia.test.util;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchEvent;
-import java.time.LocalDate;
-import java.util.Date;
-import java.util.concurrent.TimeUnit;
+import java.io.InputStreamReader;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.charset.Charset;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -18,10 +21,12 @@ import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 
-import org.sirenia.test.util.Callback.Callback10;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.core.io.Resource;
 import org.springframework.util.ResourceUtils;
+import org.springframework.util.StreamUtils;
 
 /**
  * 这个工具类，可以执行js脚本。js脚本中可以调用java类或者java对象的方法。返回值可以是java对象。 主要可以用来为java添加动态性。
@@ -42,13 +47,14 @@ import org.springframework.util.ResourceUtils;
  * 参考 jdk.nashorn.internal.objects.Global
  */
 public class JsInvoker {
-	private static final Logger logger = LoggerFactory.getLogger(JsInvoker.class);
+	public static final Logger logger = LoggerFactory.getLogger(JsInvoker.class);
 	public static ScriptEngine engine = new ScriptEngineManager().getEngineByName("js");
 	private static Invocable invocable = (Invocable) engine;
-	private static LRUCache<String, Object> jsObjectCache = new LRUCache<>(1000);
+	private static Map<String, Object> jsObjectCache = new ConcurrentHashMap<>();
+	private static Map<String, Long> filelastModifyTimeStamp = new ConcurrentHashMap<>();// filename->文件修改的时间戳
+	private static Map<String, Method> scriptObjectMirrorMethods = new ConcurrentHashMap<>();
+	private static String template;
 	private static Lock lock = new ReentrantLock();
-	private static long lockTime = 1000 * 10;
-	private static TimeUnit timeUnit = TimeUnit.SECONDS;
 	/**
 	 * 每一个js file经过eval之后都要返回一个js对象。
 	 * 
@@ -59,12 +65,23 @@ public class JsInvoker {
 			// engine.getBindings(ScriptContext.ENGINE_SCOPE);
 			// bindings.put("__root",
 			// getKey(ResourceUtils.getFile("classpath:js")));
+			DefaultResourceLoader rl = new DefaultResourceLoader();
+			Resource r = rl.getResource("classpath:template/mock.js");
+			try (BufferedReader br = new BufferedReader(
+					new InputStreamReader(r.getInputStream(), Charset.forName("utf-8")))) {
+				String line = null;
+				StringBuilder text = new StringBuilder();
+				while ((line = br.readLine()) != null) {
+					text.append(line).append(System.lineSeparator());
+				}
+				template = text.toString();
+			}
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
 	}
 
-	private static String readFileText(File file) {
+	private static String readFileText(File file) throws IOException {
 		try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
 			StringBuilder sb = new StringBuilder();
 			String line = null;
@@ -72,76 +89,11 @@ public class JsInvoker {
 				sb.append(line).append(System.lineSeparator());
 			}
 			return sb.toString();
-		} catch (IOException e) {
-			throw new RuntimeException(e);
 		}
-	}
-
-	public static void watch(final String dir, Callback10<Object> afterEval) {
-		Thread t = new Thread(new Runnable() {
-			@Override
-			public void run() {
-				try {
-					watchInternal(dir, afterEval);
-				} catch (Exception e) {
-					logger.error("监听js文件目录" + dir + "异常", e);
-					throw new RuntimeException(e);
-				}
-			}
-		});
-		t.setDaemon(true);
-		t.start();
-	}
-
-	private static void watchInternal(String dir, Callback10<Object> afterEval) {
-		File dirFile;
-		try {
-			dirFile = ResourceUtils.getFile(dir);
-		} catch (FileNotFoundException e) {
-			throw new RuntimeException(e);
-		}
-		final String dirFilePath = dirFile.getAbsolutePath();
-		FileWatcher watcher = new FileWatcher().withDir(dirFilePath).withKind(StandardWatchEventKinds.ENTRY_MODIFY);
-		watcher.watch(new Callback10<WatchEvent<?>>() {
-			@Override
-			public void apply(WatchEvent<?> event) {
-				String filename = event.context().toString();
-				File file = new File(dirFilePath, filename);
-				// String fileText = readFileText(file);
-				Object jsObject = evalFile(file,true);
-				if(afterEval != null){
-					afterEval.apply(jsObject);
-				}
-				// fileTextCache.put(file.getAbsolutePath(), fileText);
-			}
-		});
 	}
 
 	private static String getKey(File file) {
 		return file.getAbsolutePath();
-	}
-
-	public static void main(String[] args)
-			throws InterruptedException, ScriptException, NoSuchMethodException, FileNotFoundException {
-		watch("classpath:js",null);
-		Object http = evalFile(ResourceUtils.getFile("classpath:js/builtin/http.js"),false);
-		Object res = invokeJsMethod(http, "post", "http://www.baidu.com", "");
-		System.out.println(res);
-		res = invokeJavaMethod(new Date(), "getTime");
-		System.out.println(res);
-		res = invokeJavaMethod(LocalDate.now(), "atTime", 10, 20, 30);
-		// LocalDate.now().atTime(10, 20, 30);
-		System.out.println(res);
-		res = invokeJavaStaticMethod(LocalDate.class, "now");
-		System.out.println(res);
-		// Object res = invokeMethod2(new Date(),"getTime");
-		// System.out.println(res);
-		Object httptest = evalFile(ResourceUtils.getFile("classpath:js/httptest.js"),false);
-		res = invokeJsMethod(httptest, "test");
-		System.out.println(res);
-
-		res = invokeJsMethodReturnJSON(httptest, "testjson");
-		System.out.println(res);
 	}
 
 	/*
@@ -157,73 +109,70 @@ public class JsInvoker {
 	 * 
 	 * @param file
 	 * @return
+	 * @throws ScriptException
+	 * @throws IOException 
 	 */
-	public static Object evalFile(File file,boolean forceEval) {
+	public static Object evalFile(File file) throws ScriptException, IOException {
 		try {
-			if(lock.tryLock(lockTime, timeUnit)){
-				String fileText = null;
-				String key = getKey(file);
-				Object jsObject = null;
-				if(forceEval){
-					fileText = readFileText(file);
-					jsObject = engine.eval(fileText);
-					jsObjectCache.put(key, jsObject);
-				}else{
-					jsObject = jsObjectCache.get(key);
-					if (jsObject == null) {
-						fileText = readFileText(file);
-						jsObject = engine.eval(fileText);
-						jsObjectCache.put(key, jsObject);
-					}
-				}
+			lock.lock();
+			mkFileNx(file);
+			String key = getKey(file);
+			Long prevLastModifyTimeStamp = filelastModifyTimeStamp.get(key);
+			Long lastModifyTimeStamp = file.lastModified();
+			String fileText = null;
+			if (lastModifyTimeStamp.equals(prevLastModifyTimeStamp)) {
+				return jsObjectCache.get(key);
+			} else {
+				fileText = readFileText(file);
+				Object jsObject = engine.eval(fileText);
+				jsObjectCache.put(key, jsObject);
+				filelastModifyTimeStamp.put(key, lastModifyTimeStamp);
 				return jsObject;
 			}
-			throw new RuntimeException("获取锁失败");
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+		} finally {
+			lock.unlock();
+		}
+	}
+	private static void mkFileNx(File file) throws IOException{
+		if(!file.exists()){
+			File parent = file.getParentFile();
+			if(!parent.exists()){
+				if(!parent.mkdirs()){
+					throw new RuntimeException("创建目录【"+parent.getAbsolutePath()+"】失败");
+				}
+			}
+			if(!file.createNewFile()){
+				throw new RuntimeException("创建文件【"+file.getAbsolutePath()+"】失败");
+			}
+			StreamUtils.copy(template, Charset.forName("utf-8"), new FileOutputStream(file));
+		}
+	}
+	public static Object evalText(String key, String text) throws ScriptException {
+		try {
+			lock.lock();
+			if (key == null) {
+				return engine.eval(text);
+			}
+			Object jsObject = jsObjectCache.get(key);
+			if (jsObject == null) {
+				jsObject = engine.eval(text);
+				jsObjectCache.put(key, jsObject);
+			}
+			return jsObject;
 		} finally {
 			lock.unlock();
 		}
 	}
 
-	public static Object evalText(String key, String text,boolean forceEval) {
-		try {
-			if(lock.tryLock(lockTime, timeUnit)){
-				if (key == null) {
-					return engine.eval(text);
-				}
-				Object jsObject = jsObjectCache.get(key);
-				if (jsObject == null) {
-					jsObject = engine.eval(text);
-					jsObjectCache.put(key, jsObject);
-				}
-				return jsObject;
-			}
-			throw new RuntimeException("获取锁失败");
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		} finally {
-			lock.unlock();
-		}
+	public static Object invokeJavaStaticMethod(String clazzName, String method, Object... args) throws ClassNotFoundException, ScriptException, NoSuchMethodException, IOException {
+		return invokeJavaStaticMethod(Class.forName(clazzName), method, args);
 	}
 
-	public static Object invokeJavaStaticMethod(String clazzName, String method, Object... args) {
+	public static Object invokeJavaStaticMethod(Class<?> clazz, String method, Object... args) throws ScriptException, NoSuchMethodException, IOException {
 		try {
-			return invokeJavaStaticMethod(Class.forName(clazzName), method, args);
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	public static Object invokeJavaStaticMethod(Class<?> clazz, String method, Object... args) {
-		try {
-			if(lock.tryLock(lockTime, timeUnit)){
-				Object invoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/java.js"),false);
-				return invocable.invokeMethod(invoker, "invokeStatic", clazz.getName(), method, args);
-			}
-			throw new RuntimeException("获取锁失败");
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+			lock.lock();
+			Object invoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/java.js"));
+			return invocable.invokeMethod(invoker, "invokeStatic", clazz.getName(), method, args);
 		} finally {
 			lock.unlock();
 		}
@@ -238,16 +187,15 @@ public class JsInvoker {
 	 * @param args
 	 *            java参数
 	 * @return
+	 * @throws ScriptException 
+	 * @throws NoSuchMethodException 
+	 * @throws IOException 
 	 */
-	public static Object invokeJavaMethod(Object target, String method, Object... args) {
+	public static Object invokeJavaMethod(Object target, String method, Object... args) throws ScriptException, NoSuchMethodException, IOException {
 		try {
-			if(lock.tryLock(lockTime, timeUnit)){
-				Object invoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/java.js"),false);
-				return invocable.invokeMethod(invoker, "invoke", target, method, args);
-			}
-			throw new RuntimeException("获取锁失败");
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+			lock.lock();
+			Object invoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/java.js"));
+			return invocable.invokeMethod(invoker, "invoke", target, method, args);
 		} finally {
 			lock.unlock();
 		}
@@ -262,19 +210,33 @@ public class JsInvoker {
 	 * @param args
 	 *            js参数
 	 * @return
+	 * @throws ScriptException 
+	 * @throws NoSuchMethodException 
 	 */
-	public static Object invokeJsMethod(Object target, String method, Object... args) {
+	public static Object invokeJsMethod(Object target, String method, Object... args) throws NoSuchMethodException, ScriptException {
 		try {
-			if (lock.tryLock(lockTime, timeUnit)) {
-				Object res = invocable.invokeMethod(target, method, args);
-				return res;
-			}
-			throw new RuntimeException("获取锁失败");
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+			lock.lock();
+			Object res = invocable.invokeMethod(target, method, args);
+			return res;
 		} finally {
 			lock.unlock();
 		}
+	}
+
+	public static Set<String> getOwnKeys(Object jsObject, boolean all) throws NoSuchMethodException, SecurityException,
+			IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+		String methodName = "getOwnKeys";
+		Method method = scriptObjectMirrorMethods.get(methodName);
+		if (method == null) {
+			method = jsObject.getClass().getMethod(methodName, boolean.class);
+			scriptObjectMirrorMethods.put(methodName, method);
+		}
+		String[] keys = (String[]) method.invoke(jsObject, all);
+		Set<String> set = new TreeSet<>();
+		for (int i = 0; i < keys.length; i++) {
+			set.add(keys[i]);
+		}
+		return set;
 	}
 
 	/**
@@ -282,19 +244,44 @@ public class JsInvoker {
 	 * @param method
 	 * @param args
 	 * @return
+	 * @throws ScriptException 
+	 * @throws NoSuchMethodException 
+	 * @throws IOException 
 	 */
-	public static Object invokeJsMethodReturnJSON(Object target, String method, Object... args) {
+	public static Object invokeJsMethodReturnJSON(Object target, String method, Object... args) throws ScriptException, NoSuchMethodException, IOException {
 		try {
-			if(lock.tryLock(lockTime, timeUnit)){
-				Object jsInvoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/js.js"),false);
-				Object res = invocable.invokeMethod(jsInvoker, "invoke", target, method, args);
-				return res;
-			}
-			throw new RuntimeException("获取锁失败");
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+			lock.lock();
+			Object jsInvoker = evalFile(ResourceUtils.getFile("classpath:js/builtin/js.js"));
+			Object res = invocable.invokeMethod(jsInvoker, "invoke", target, method, args);
+			return res;
 		} finally {
 			lock.unlock();
 		}
 	}
+
+	public static void main(String[] args)
+			throws InterruptedException, ScriptException, NoSuchMethodException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, SecurityException, IOException {
+		// ScriptObjectMirror m;
+		Object obj = evalFile(new File("d:/tomcat/test/DataSyncService.js"));
+		Object res = obj.getClass().getMethod("hasMember", String.class).invoke(obj, "send");
+		res = obj.getClass().getMethod("getOwnKeys", boolean.class).invoke(obj, true);
+		System.out.println(res);
+		/*
+		 * Object http =
+		 * evalFile(ResourceUtils.getFile("classpath:js/builtin/http.js"));
+		 * Object res = invokeJsMethod(http, "post", "http://www.baidu.com",
+		 * ""); System.out.println(res); res = invokeJavaMethod(new Date(),
+		 * "getTime"); System.out.println(res); res =
+		 * invokeJavaMethod(LocalDate.now(), "atTime", 10, 20, 30); //
+		 * LocalDate.now().atTime(10, 20, 30); System.out.println(res); res =
+		 * invokeJavaStaticMethod(LocalDate.class, "now");
+		 * System.out.println(res); // Object res = invokeMethod2(new
+		 * Date(),"getTime"); // System.out.println(res); Object httptest =
+		 * evalFile(ResourceUtils.getFile("classpath:js/httptest.js")); res =
+		 * invokeJsMethod(httptest, "test"); System.out.println(res);
+		 * 
+		 * res = invokeJsMethodReturnJSON(httptest, "testjson");
+		 * System.out.println(res);
+		 */ }
+
 }

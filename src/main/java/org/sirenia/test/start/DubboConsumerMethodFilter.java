@@ -17,7 +17,7 @@ import com.alibaba.dubbo.rpc.RpcResult;
 
 public class DubboConsumerMethodFilter implements Filter {
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
-	private JsAspectConf jsAspectConf;
+	private volatile JsAspectConf jsAspectConf;
 	@Override
 	public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
 		if(jsAspectConf==null){
@@ -27,9 +27,9 @@ public class DubboConsumerMethodFilter implements Filter {
 		Object[] args = invocation.getArguments();
 		String methodName = invocation.getMethodName();
 		try{
-			String key = jsAspectConf.getAppName()+"."+interfaceName;
-			if(jsAspectConf.methodSet.contains(key+"."+methodName)){
-				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(jsAspectConf.getJsDir()+"/"+key.replaceAll("\\.", "/")+".js"),false);
+			String key = jsAspectConf.getDataHome();
+			Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(key+"/mock.js"));
+			if(JsInvoker.getOwnKeys(jsObject, true).contains(interfaceName.replaceAll("\\.", "/")+"#"+methodName)){
 				Object ret = JsInvoker.invokeJsMethod(jsObject, methodName, args);
 				if(ret == null){
 					return null;

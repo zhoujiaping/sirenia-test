@@ -30,9 +30,9 @@ public class HessianMethodInterceptor implements MethodInterceptor, Ordered {
 			clazzname = clazzname.substring(0, endIndex - 1 );
 		}
 		try{
-			String key = jsAspectConf.getAppName()+"."+clazzname;
-			if(jsAspectConf.methodSet.contains(key+"."+funcName)){
-				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(jsAspectConf.getJsDir()+"/"+key.replaceAll("\\.", "/")+".js"),false);
+			String key = jsAspectConf.getDataHome();
+			Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(key+"/mock.js"));
+			if(JsInvoker.getOwnKeys(jsObject, true).contains(clazzname.replaceAll("\\.", "/")+"#"+funcName)){
 				Object ret = JsInvoker.invokeJsMethod(jsObject, funcName, args);
 				if(ret == null){
 					return null;

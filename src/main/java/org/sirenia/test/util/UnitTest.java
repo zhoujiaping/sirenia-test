@@ -2,32 +2,55 @@ package org.sirenia.test.util;
 
 import java.io.File;
 
-import org.sirenia.test.util.Callback.Callback00;
-
 public class UnitTest {
-	public static ThreadLocal<String> dataDirHolder = new InheritableThreadLocal<>();
-	public static void with(String dataSetId,Callback00 cb){
-		try{
-			//获取数据集路径
-			StackTraceElement stack = RuntimeUtil.getTestStackByTest();
+	private static ThreadLocal<String> dataDirHolder = new InheritableThreadLocal<>();
+	private static ThreadLocal<String> dataSetIdHolder = new InheritableThreadLocal<>();
+	public static void before(String dataSetId){
+		StackTraceElement testTrace = null;
+		StackTraceElement[] stes = RuntimeUtil.stackTraceElements();
+		for (int i = stes.length - 1; i >= 0; i--) {
+			StackTraceElement stack = stes[i];
 			String clazzName = stack.getClassName();
-			String methodName = stack.getMethodName();
-			String dataDir = clazzName.replaceAll("\\.", "/")+"/"+methodName;
-			//设置mock数据目录
-			dataDirHolder.set(dataDir);
-			//执行代码，生成sql
-			generateSql(dataDir);
-			//执行sql，生成数据
-			executeSql(dataDir);
-			cb.apply();
-		}finally{
-			//清除mock数据目录
-			dataDirHolder.remove();
+			if (clazzName.endsWith("Test")) {
+				testTrace = stack;
+				break;
+			}
 		}
-		
+		if(testTrace==null){
+			throw new RuntimeException("没有找到测试类");
+		}
+		//获取数据集路径
+		String clazzName = testTrace.getClassName();
+		//String methodName = stack.getMethodName();
+		String relativeTestDir = clazzName.replaceAll("\\.", "/");
+		//设置mock数据目录
+		dataDirHolder.set(relativeTestDir);
+		dataSetIdHolder.set(dataSetId);
+		//执行代码，生成sql
+		generateSql(relativeTestDir);
+		//执行sql，生成数据
+		executeSql(relativeTestDir);
 	}
-	private static void executeSql(String dataDir) {
-		File sqlFile = new File(dataDir+"/init.sql");
+	public static void after(String dataSetId){
+		dataDirHolder.remove();
+		dataSetIdHolder.remove();
+	}
+	public static String getRelativeTestDir(){
+		String relativeTestDir = dataDirHolder.get();
+		if(relativeTestDir==null){
+			return "";
+		}
+		return relativeTestDir;
+	}
+	public static String getDataSetId(){
+		String id = dataSetIdHolder.get();
+		if(id == null){
+			return "";
+		}
+		return id;
+	}
+	private static void executeSql(String relativeTestDir) {
+		File sqlFile = new File(relativeTestDir+"/init.sql");
 		// TODO Auto-generated method stub
 		
 	}

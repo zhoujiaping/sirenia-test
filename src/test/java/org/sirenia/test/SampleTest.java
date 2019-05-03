@@ -8,7 +8,6 @@ import org.sirenia.test.util.RuntimeUtil;
 public class SampleTest {
 	@Test
 	public void testSample() {
-		System.out.println(RuntimeUtil.getTestStackByTest());
 		
 	}
 }

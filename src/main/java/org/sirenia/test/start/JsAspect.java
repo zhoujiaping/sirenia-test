@@ -28,10 +28,12 @@ public class JsAspect {
 	private JsAspectConf jsAspectConf;
 
 	private SerializeConfig config = new SerializeConfig();
-	public JsAspect(){
-		
+
+	public JsAspect() {
+
 	}
-	public void init(){
+
+	public void init() {
 		ObjectSerializer toStringSerializer = new ObjectSerializer() {
 			@Override
 			public void write(JSONSerializer serializer, Object object, Object fieldName, Type fieldType, int features)
@@ -39,27 +41,24 @@ public class JsAspect {
 				serializer.write(object.toString());
 			}
 		};
-		//config.put(org.apache.catalina.connector.ResponseFacade.class, toStringSerializer);
-		try {
-			List<String> classNames = jsAspectConf.getStringSerializerClasses();
-			for(String name : classNames){
-				if(StringUtils.hasText(name)){
-					Class<?> clazz = Class.forName("");
+		// config.put(org.apache.catalina.connector.ResponseFacade.class,
+		// toStringSerializer);
+		List<String> classNames = jsAspectConf.getStringSerializerClasses();
+		for (String name : classNames) {
+			if (StringUtils.hasText(name)) {
+				try {
+					Class<?> clazz = Class.forName(name);
 					config.put(clazz, toStringSerializer);
+				} catch (ClassNotFoundException e) {
+					logger.warn("ClassNotFoundException：【{}】", name);
 				}
 			}
-		/*	Class<?> responseClass = Class.forName("org.apache.catalina.connector.ResponseFacade");
-			Class<?> requestClass = Class.forName("");
-			Class<?> sessionClass = Class.forName("");
-			config.put(requestClass, toStringSerializer);
-			config.put(sessionClass, toStringSerializer);
-*/		} catch (ClassNotFoundException e) {
-			throw new RuntimeException(e);
 		}
 	}
 	public void setJsAspectConf(JsAspectConf jsAspectConf) {
 		this.jsAspectConf = jsAspectConf;
 	}
+
 	/**
 	 * 环绕通知
 	 * 
@@ -68,24 +67,24 @@ public class JsAspect {
 	 * @return
 	 * @throws Throwable
 	 */
-	//@Around("execution(* com.sfpay..*(..)) or execution(* com.sf..*(..))")
+	// @Around("execution(* com.sfpay..*(..)) or execution(* com.sf..*(..))")
 	public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
-		//MethodInvocationProceedingJoinPoint
-		//从配置中读取需要调用js的接口，如果在列表中，则调用对应的方法。
-		//列表自动更新，通过文件监听，判断配置是否被修改过。
-		Signature signature =	joinPoint.getSignature();
-		//MethodSignature ms = (MethodSignature)signature;
+		// MethodInvocationProceedingJoinPoint
+		// 从配置中读取需要调用js的接口，如果在列表中，则调用对应的方法。
+		// 列表自动更新，通过文件监听，判断配置是否被修改过。
+		Signature signature = joinPoint.getSignature();
+		// MethodSignature ms = (MethodSignature)signature;
 		Object[] args = joinPoint.getArgs();
-		String funcName = signature.getName();//方法名
+		String methodName = signature.getName();// 方法名
 		Class<?> targetClazz = joinPoint.getTarget().getClass();
 		String clazzname = targetClazz.getName();
 		String clazznameRegexp = jsAspectConf.getClazznameRegexp();
 		/*
 		 * 对于dubbo接口和hessian接口，在本地的实现类是jdk动态代理。
-		 * */
+		 */
 		if (clazzname.startsWith("com.sun.proxy")) {
 			// mybatis mapper接口，hessian接口
-			clazzname = findClazzname(targetClazz,clazznameRegexp );
+			clazzname = findClazzname(targetClazz, clazznameRegexp);
 		} else if (clazzname.startsWith("com.alibaba.dubbo.common.bytecode.proxy")) {
 			// dubbo接口
 			Object methodInvocation = ReflectHelper.getValueByFieldName(joinPoint, "methodInvocation");
@@ -95,44 +94,62 @@ public class JsAspect {
 			Object directory = ReflectHelper.getValueByFieldName(invoker, "directory");
 			Object serviceType = ReflectHelper.getValueByFieldName(directory, "serviceType");
 			Class<?> clazz = (Class<?>) serviceType;
-			clazzname = findClazzname(clazz,clazznameRegexp);
-		}else{
-			//如果目标对象的类名已经匹配了正则，那么取它的接口作为类名
-			clazzname = findClazzname(targetClazz,clazznameRegexp);
+			clazzname = findClazzname(clazz, clazznameRegexp);
+		} else {
+			// 如果目标对象的类名已经匹配了正则，那么取它的接口作为类名
+			clazzname = findClazzname(targetClazz, clazznameRegexp);
 		}
 
 		String clazznameRegexpExlude = jsAspectConf.getClazznameRegexpExlude();
-		if(isExclude(clazzname, clazznameRegexpExlude )){
+		if (isExclude(clazzname, clazznameRegexpExlude)) {
 			return joinPoint.proceed();
 		}
-		try{
-			String key = clazzname+"#"+funcName;
-			String dataDir = jsAspectConf.getJsDir()+"/"+UnitTest.dataDirHolder.get();
-			if(jsAspectConf.methodSet.contains(key)){
-				if(isExclude(clazzname,clazznameRegexpExlude)){
+		try {
+			String fullFuncName = clazzname + "#" + methodName;
+			String simpleFuncName = targetClazz.getSimpleName()+"#"+methodName;
+			String dataDir = jsAspectConf.getDataHome() + "/" + UnitTest.getRelativeTestDir();
+			Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(dataDir + "/mock.js"));
+			//makeDirNX(new File(dataDir));
+			Set<String> methods = JsInvoker.getOwnKeys(jsObject, true);
+			String funcName = null; 
+			if (methods.contains(fullFuncName)) {
+				funcName = fullFuncName;
+			}else if(methods.contains(simpleFuncName)){
+				funcName = simpleFuncName;
+			}
+			if (funcName != null) {
+				if (isExclude(clazzname, clazznameRegexpExlude)) {
 					return joinPoint.proceed();
 				}
-				Object param = JSON.toJSONString(args,config);
-				logger.info("执行Mock【{}】方法【{}】，入参：{}",dataDir,key,param);
-				Object jsObject = JsInvoker.evalFile(ResourceUtils.getFile(dataDir+"/mock.js"),false);
-				Object ret = JsInvoker.invokeJsMethod(jsObject, funcName, key,param);
-				logger.info("执行Mock【{}】方法【{}】，出参：{}",dataDir,key,ret);
-				if(ret == null){
+				Object param = JSON.toJSONString(args, config);
+				logger.info("执行Mock【{}】方法【{}】，入参：{}", dataDir, funcName, param);
+				Object ret = JsInvoker.invokeJsMethod(jsObject, funcName, param, UnitTest.getDataSetId());
+				logger.info("执行Mock【{}】方法【{}】，出参：{}", dataDir, funcName, ret);
+				if (ret == null) {
 					return null;
 				}
-				Method method = MethodUtil.getMethodByName(clazzname, funcName);
-				//tip:不要用ms.getMethod()，返回的方法签名会不一样，解析json的结果不一样
-				return MethodUtil.parseJSONForReturnType(method , ret.toString());
+				Method method = MethodUtil.getMethodByName(clazzname, methodName);
+				// tip:不要用ms.getMethod()，返回的方法签名会不一样，解析json的结果不一样
+				return MethodUtil.parseJSONForReturnType(method, ret.toString());
 			}
-		}catch(Exception e){
-			logger.error("JsAspect执行js异常",e);
+		} catch (Exception e) {
+			logger.error("JsAspect执行js异常", e);
 			throw new RuntimeException(e);
 		}
 		Object ret = joinPoint.proceed();
 		return ret;
 	}
+
+	/*private void makeDirNX(File file) {
+		if (file.exists()) {
+			return;
+		}
+		file.mkdirs();
+	}*/
+
 	/**
 	 * 如果实现了接口，就拿接口名取匹配。匹配到了，则返回接口名，匹配不到，返回原类名
+	 * 
 	 * @param targetClazz
 	 * @param clazznameRegexp
 	 * @return
@@ -148,9 +165,11 @@ public class JsAspect {
 		}
 		return clazzname;
 	}
+
 	private boolean isExclude(String clazzname, String clazznameRegexpExlude) {
-		return clazznameRegexpExlude!=null && clazzname.matches(clazznameRegexpExlude);
+		return clazznameRegexpExlude != null && clazzname.matches(clazznameRegexpExlude);
 	}
+
 	/**
 	 * 前置通知
 	 */
