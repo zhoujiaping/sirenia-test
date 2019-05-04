@@ -17,42 +17,30 @@
 	<!-- 切面配置 -->
 	<bean id="test-jsAspectConf" name="jsAspectConf"
 		class="org.sirenia.test.start.JsAspectConf">
-		<!-- 应用名称 -->
-		<property name="appName" value="${project.name}"></property>
 		<!-- 数据根目录 -->
-		<property name="dataDir" value="/my/sirenia-test-js"></property>
+		<property name="dataHome" value="/tomcat/test"></property>
 		<!-- 请求、响应、会话三个类的序列化使用toString策略 -->
 		<property name="stringSerializerClasses">
 			<list>
 				<value>org.apache.catalina.connector.ResponseFacade</value>
-				<value></value>
-				<value></value>
+				<value>org.apache.catalina.connector.ResponseFacade</value>
+				<value>org.apache.catalina.connector.ResponseFacade</value>
 			</list>
 		</property>
 		<!-- 类名/接口名 正则，匹配正则的才会被mock -->
-		<property name="clazznameRegexp" value="com\.xx\..*|com\.xx\..*"></property>
+		<property name="clazznameRegexp" value="myapp\..*"></property>
 		<!-- 类名/接口名 正则，匹配正则的会被略过mock -->
 		<!-- <property name="clazznameRegexpExlude" value=""></property> -->
-	</bean>
-	<!-- <bean id="test-hessianMethodInterceptor" class="org.sirenia.test.start.HessianMethodInterceptor"> 
-		<property name="jsAspectConf" ref="test-jsAspectConf"></property> </bean> -->
-	<!-- 方法集加载器 -->
-	<bean id="test-methodSetLoader" class="org.sirenia.test.start.MethodSetLoader"
-		init-method="init">
-		<property name="jsAspectConf" ref="test-jsAspectConf"></property>
 	</bean>
 	<!-- 定义切面 -->
 	<bean id="test-jsAspect" class="org.sirenia.test.start.JsAspect"
 		init-method="init">
 		<property name="jsAspectConf" ref="test-jsAspectConf"></property>
 	</bean>
-	<bean id="test-logAspect" class="org.sirenia.test.start.LogAspect" init-method="init">
-		<property name="jsAspectConf" ref="test-jsAspectConf"></property>
-	</bean>
 	<aop:config>
 		<!-- 定义切点函数 -->
 		<aop:pointcut id="pointcut"
-			expression="execution(* com.xx..*(..)) or execution(* com.xx..*(..))" />
+			expression="execution(* myapp..*(..))" />
 		<!-- 配置AOP 切面 定义通知 order 定义优先级,值越小优先级越大 <aop:aspect ref="test-jsAspect" 
 			order="0"> 定义通知 method 指定通知方法名,必须与MyAspectXML中的相同 pointcut 指定切点函数 <aop:before 
 			method="before" pointcut-ref="pointcut" /> 后置通知 returning="returnVal" 定义返回值 
@@ -67,7 +55,5 @@
 		<aop:aspect ref="test-jsAspect" order="0">
 			<aop:around method="around" pointcut-ref="pointcut" />
 		</aop:aspect>
-		<!-- <aop:aspect ref="test-logAspect" order="1"> <aop:around method="around" 
-			pointcut-ref="pointcut" /> </aop:aspect> -->
 	</aop:config>
 </beans>
